@@ -8,6 +8,7 @@ import random
 from pathlib import Path
 import dotenv
 from dotenv import load_dotenv
+import os
 
 import discord
 from discord import app_commands
