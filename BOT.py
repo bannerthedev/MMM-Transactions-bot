@@ -2274,6 +2274,51 @@ async def submit_score(
     )
 
 
+@bot.event
+async def on_member_remove(member: discord.Member):
+    guild = member.guild
+    # find the single team role they belonged to (if any)
+    team_role = find_single_team_for_member(guild, member)
+
+    # remove any pending invites for this user (clean invites.json)
+    try:
+        invites = load_invites()
+        changed = False
+        for key, lst in list(invites.items()):
+            if str(member.id) in lst:
+                lst.remove(str(member.id))
+                changed = True
+                if not lst:
+                    invites.pop(key, None)
+                else:
+                    invites[key] = lst
+        if changed:
+            save_invites(invites)
+    except Exception:
+        pass
+
+    # update player history: add team to past_teams if not already present
+    try:
+        if team_role:
+            hist = load_player_history()
+            uid = str(member.id)
+            entry = hist.get(uid, {})
+            past = entry.get("past_teams", [])
+            if team_role.name not in past:
+                past.append(team_role.name)
+            entry["past_teams"] = past
+            hist[uid] = entry
+            save_player_history(hist)
+    except Exception:
+        pass
+
+    # send transaction message
+    tx_ch = guild.get_channel(TRANSACTIONS_ID)
+    if tx_ch:
+        if team_role:
+            await tx_ch.send(f"{member.mention} has left the server and was automatically removed from **{team_role.name}**")
+        else:
+            await tx_ch.send(f"{member.mention} has left the server.")
 
 
 
