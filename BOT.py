@@ -2280,49 +2280,47 @@ async def on_member_remove(member: discord.Member):
     # find the single team role they belonged to (if any)
     team_role = find_single_team_for_member(guild, member)
 
-# if they were not on exactly one team, do nothing
-if team_role is None:
-    return
+    # if they were not on exactly one team, do nothing
+    if team_role is None:
+        return
 
-# remove any pending invites for this user (clean invites.json)
-try:
-    invites = load_invites()
-    changed = False
-    for key, lst in list(invites.items()):
-        if str(member.id) in lst:
-            lst.remove(str(member.id))
-            changed = True
-            if not lst:
-                invites.pop(key, None)
-            else:
-                invites[key] = lst
-    if changed:
-        save_invites(invites)
-except Exception:
-    pass
+    # remove any pending invites for this user (clean invites.json)
+    try:
+        invites = load_invites()
+        changed = False
+        for key, lst in list(invites.items()):
+            if str(member.id) in lst:
+                lst.remove(str(member.id))
+                changed = True
+                if not lst:
+                    invites.pop(key, None)
+                else:
+                    invites[key] = lst
+        if changed:
+            save_invites(invites)
+    except Exception:
+        pass
 
-# update player history: add team to past_teams if not already present
-try:
-    hist = load_player_history()
-    uid = str(member.id)
-    entry = hist.get(uid, {})
-    past = entry.get("past_teams", [])
-    if team_role.name not in past:
-        past.append(team_role.name)
-    entry["past_teams"] = past
-    hist[uid] = entry
-    save_player_history(hist)
-except Exception:
-    pass
+    # update player history: add team to past_teams if not already present
+    try:
+        hist = load_player_history()
+        uid = str(member.id)
+        entry = hist.get(uid, {})
+        past = entry.get("past_teams", [])
+        if team_role.name not in past:
+            past.append(team_role.name)
+        entry["past_teams"] = past
+        hist[uid] = entry
+        save_player_history(hist)
+    except Exception:
+        pass
 
-# send transaction message
-tx_ch = guild.get_channel(TRANSACTIONS_ID)
-if tx_ch:
-    await tx_ch.send(f"{member.mention} has left the server and was automatically removed from **{team_role.name}**")
-
-
-
-
+    # send transaction message
+    tx_ch = guild.get_channel(TRANSACTIONS_ID)
+    if tx_ch:
+        await tx_ch.send(
+            f"{member.mention} has left the server and was automatically removed from **{team_role.name}**"
+        )
 
 # ---------------- READY / RUN ----------------
 @bot.event
