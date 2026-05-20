@@ -2323,6 +2323,7 @@ if tx_ch:
 
 
 
+
 # ---------------- READY / RUN ----------------
 @bot.event
 async def on_ready():
