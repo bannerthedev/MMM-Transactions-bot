@@ -246,7 +246,7 @@ class InviteDMView(discord.ui.View):
 
         tx_ch = guild.get_channel(TRANSACTIONS_ID)
         if tx_ch:
-            await tx_ch.send(f"{member.mention} Has Join **{team_role.name}**")
+            await tx_ch.send(f"{member.mention} Has Joined **{team_role.name}**")
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
