@@ -72,17 +72,16 @@ def gtag_to_hex(code: str) -> int:
     return (r << 16) + (g << 8) + b
 
 
-def _safe_load_json(path: Path, default):
+from pathlib import Path
+
+def _safe_load_json(file_path, default):
+    path = Path(file_path)
     if not path.exists():
         return default
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        return default
     try:
-        return json.loads(raw)
-    except Exception as e:
-        print(f"[ERROR] {path.name} invalid: {e}. Resetting.")
-        path.write_text(json.dumps(default, indent=4), encoding="utf-8")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
         return default
 
 
