@@ -2099,17 +2099,25 @@ async def submit_time(
         f"Team staff must accept this match.\n\n"
         f"{title_line}"
         f"> **{week}\n"
+        f"> Match: {team1.name} vs {team2.name}\n"
         f"> Time: {time}\n"
         f"> Referee: Unassigned\n"
         f"> Caster: Unassigned **"
     )
 
-    view = MatchAcceptView(week=week, time_str=time, header=header, team1_id=team1.id, team2_id=team2.id)
+    view = MatchAcceptView(
+        week=week,
+        time_str=time,
+        header=header,
+        team1_id=team1.id,
+        team2_id=team2.id
+    )
     msg = await channel.send(content, view=view)
     view.accept_message_id = msg.id
     view.accept_channel_id = channel.id
 
     await interaction.response.send_message("Match posted. Waiting for both teams to accept.", ephemeral=True)
+
 
 # ---------- /addscrim command ----------
 @bot.tree.command(
