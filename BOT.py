@@ -771,15 +771,72 @@ class TeamManager(commands.Cog):
     def __init__(self, bot_: commands.Bot):
         self.bot = bot_
 
-    async def _roster_lock_block(self, interaction: discord.Interaction, team: discord.Role) -> bool:
-        """Return True if a command should be blocked due to roster lock."""
-        if is_roster_locked(interaction.guild, team):
-            if interaction.response.is_done():
-                await interaction.followup.send("Roster lock has been enabled.", ephemeral=True)
-            else:
-                await interaction.response.send_message("Roster lock has been enabled.", ephemeral=True)
-            return True
-        return False
+    async def _internal_create_team(
+        self,
+        guild: discord.Guild,
+        invoker: discord.abc.User,
+        team_name: str,
+        captain: discord.Member,
+        color_code: str,
+    ):
+        """Create a team from a message trigger (used by apply bot relay)."""
+        # parse hex color
+        try:
+            code = color_code.strip().lstrip("#")
+            if len(code) != 6 or any(c not in "0123456789abcdefABCDEF" for c in code):
+                raise ValueError("Hex color must be 6 hex digits, e.g. FF00FF")
+            color = discord.Color(int(code, 16))
+        except Exception as e:
+            tx_ch = guild.get_channel(TRANSACTIONS_ID)
+            if tx_ch:
+                await tx_ch.send(f"[Auto Team Create] Invalid hex color code `{color_code}`: {e}")
+            return
+
+        # create role
+        try:
+            team_role = await guild.create_role(
+                name=team_name,
+                colour=color,
+                reason=f"Team created by {invoker}",
+            )
+        except discord.Forbidden:
+            tx_ch = guild.get_channel(TRANSACTIONS_ID)
+            if tx_ch:
+                await tx_ch.send("[Auto Team Create] Missing permission to create roles.")
+            return
+        except Exception as e:
+            tx_ch = guild.get_channel(TRANSACTIONS_ID)
+            if tx_ch:
+                await tx_ch.send(f"[Auto Team Create] Failed to create role: {e}")
+            return
+
+        # assign captain roles
+        captain_role = guild.get_role(CAPTAIN_ROLE_ID)
+
+        try:
+            roles_to_add = [team_role]
+            if captain_role:
+                roles_to_add.append(captain_role)
+            await captain.add_roles(
+                *roles_to_add, reason=f"Assigned as captain for {team_name}"
+            )
+        except Exception as e:
+            print(f"[ERROR] Role assignment error: {e}")
+
+        # save in teams.json
+        teams = load_teams()
+        teams.append({"role_id": team_role.id, "name": team_name})
+        save_teams(teams)
+
+        # log to transactions
+        tx = (
+            "**New Team Created!**\n"
+            f"• Team Name: {team_role.mention}\n"
+            f"• Team Captain: {captain.mention}"
+        )
+        ch = guild.get_channel(TRANSACTIONS_ID)
+        if ch:
+            await ch.send(tx)
 
     # -------- /create-team (admin, hex color) --------
     @app_commands.guilds(GUILD_OBJ)
@@ -2334,6 +2391,85 @@ async def on_member_remove(member: discord.Member):
         )
 
 # ---------------- READY / RUN ----------------
+@bot.event
+async def on_message(message: discord.Message):
+    # ignore other bots (including self)
+    if message.author.bot:
+        return
+
+    # only listen in transactions channel
+    if message.channel.id == TRANSACTIONS_ID and message.content.startswith("/create-team "):
+        guild = message.guild
+        if guild is None:
+            return
+
+        # require staff (same as is_staff)
+        if not is_staff(message.author):
+            await message.channel.send(
+                f"{message.author.mention} Only staff may trigger auto team creation.",
+                delete_after=10
+            )
+            return
+
+        try:
+            # strip the leading command and parse args with shlex (handles quotes)
+            cmd_body = message.content[len("/create-team "):].strip()
+            parts = shlex.split(cmd_body)
+
+            # Expected format: /create-team "Team Name" @captain HEX
+            if len(parts) != 3:
+                await message.channel.send(
+                    f"{message.author.mention} Invalid format. Expected: `/create-team \"Team Name\" @captain HEX`",
+                    delete_after=10
+                )
+                return
+
+            team_name = parts[0]
+            captain_token = parts[1]
+            color_code = parts[2]
+
+            # Parse mention: <@123> or <@!123>
+            captain_id_str = "".join(ch for ch in captain_token if ch.isdigit())
+            if not captain_id_str:
+                await message.channel.send(
+                    f"{message.author.mention} Could not parse captain mention: `{captain_token}`",
+                    delete_after=10
+                )
+                return
+
+            captain = guild.get_member(int(captain_id_str))
+            if captain is None:
+                await message.channel.send(
+                    f"{message.author.mention} Captain not found in this guild.",
+                    delete_after=10
+                )
+                return
+
+            cog: TeamManager | None = bot.get_cog("TeamManager")
+            if cog is None:
+                await message.channel.send(
+                    "TeamManager cog not loaded; cannot auto-create team.",
+                    delete_after=10
+                )
+                return
+
+            await cog._internal_create_team(
+                guild=guild,
+                invoker=message.author,
+                team_name=team_name,
+                captain=captain,
+                color_code=color_code,
+            )
+        except Exception as e:
+            await message.channel.send(
+                f"Error parsing `/create-team` message: {e}",
+                delete_after=10
+            )
+
+    # let normal commands & interactions continue working
+    await bot.process_commands(message)
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
