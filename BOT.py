@@ -34,6 +34,7 @@ CAPTAIN_ROLE_ID = 1507124281027461220
 CO_CAPTAIN_ROLE_ID = 1507124736969277562
 EXECUTIVE_ROLE_ID = 1507124517963698298
 TEAM_PLAYER_ROLE_ID = 1507124644879269888
+APPLY_BOT_ID = 1509670518230614246 # (replace with your actual apply bot user ID)
 
 # assignment roles
 HEAD_REF_ROLE_ID = 1487869639244382240
@@ -91,7 +92,7 @@ def load_teams() -> list:
 
 
 def save_teams(data: list) -> None:
-    TEAMS_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    Path(TEAMS_FILE).write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def load_player_history() -> dict:
@@ -99,7 +100,7 @@ def load_player_history() -> dict:
 
 
 def save_player_history(data: dict) -> None:
-    PLAYER_HISTORY_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    Path(PLAYER_HISTORY_FILE).write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def load_invites() -> dict:
@@ -107,7 +108,7 @@ def load_invites() -> dict:
 
 
 def save_invites(data: dict) -> None:
-    INVITES_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    Path(INVITES_FILE).write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def load_roster_locks() -> dict:
@@ -118,9 +119,7 @@ def load_roster_locks() -> dict:
 
 
 def save_roster_locks(data: dict) -> None:
-    if "ALL" not in data:
-        data["ALL"] = False
-    ROSTER_LOCK_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    Path(ROSTER_LOCK_FILE).write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def is_roster_locked(guild: discord.Guild, team_role: discord.Role) -> bool:
@@ -2393,30 +2392,29 @@ async def on_member_remove(member: discord.Member):
 # ---------------- READY / RUN ----------------
 @bot.event
 async def on_message(message: discord.Message):
-    # ignore other bots (including self)
-    if message.author.bot:
+    # ignore bots except the apply bot
+    if message.author.bot and message.author.id != APPLY_BOT_ID:
         return
 
-    # only listen in transactions channel
+    # only listen in transactions channel and only for the exact command prefix
     if message.channel.id == TRANSACTIONS_ID and message.content.startswith("/create-team "):
         guild = message.guild
         if guild is None:
             return
 
-        # require staff (same as is_staff)
-        if not is_staff(message.author):
+        # allow if author is staff OR the apply bot
+        if not (is_staff(message.author) or message.author.id == APPLY_BOT_ID):
             await message.channel.send(
-                f"{message.author.mention} Only staff may trigger auto team creation.",
+                f"{message.author.mention} Only staff or the apply bot may trigger auto team creation.",
                 delete_after=10
             )
             return
 
         try:
-            # strip the leading command and parse args with shlex (handles quotes)
             cmd_body = message.content[len("/create-team "):].strip()
             parts = shlex.split(cmd_body)
 
-            # Expected format: /create-team "Team Name" @captain HEX
+            # Expect: "Team Name" @captain HEX
             if len(parts) != 3:
                 await message.channel.send(
                     f"{message.author.mention} Invalid format. Expected: `/create-team \"Team Name\" @captain HEX`",
@@ -2428,7 +2426,7 @@ async def on_message(message: discord.Message):
             captain_token = parts[1]
             color_code = parts[2]
 
-            # Parse mention: <@123> or <@!123>
+            # extract digits from mention
             captain_id_str = "".join(ch for ch in captain_token if ch.isdigit())
             if not captain_id_str:
                 await message.channel.send(
@@ -2447,10 +2445,7 @@ async def on_message(message: discord.Message):
 
             cog: TeamManager | None = bot.get_cog("TeamManager")
             if cog is None:
-                await message.channel.send(
-                    "TeamManager cog not loaded; cannot auto-create team.",
-                    delete_after=10
-                )
+                await message.channel.send("TeamManager cog not loaded; cannot auto-create team.", delete_after=10)
                 return
 
             await cog._internal_create_team(
@@ -2461,20 +2456,10 @@ async def on_message(message: discord.Message):
                 color_code=color_code,
             )
         except Exception as e:
-            await message.channel.send(
-                f"Error parsing `/create-team` message: {e}",
-                delete_after=10
-            )
+            await message.channel.send(f"Error parsing `/create-team` message: {e}", delete_after=10)
 
-    # let normal commands & interactions continue working
+    # allow command processing
     await bot.process_commands(message)
-
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print("Guild commands:", [c.name for c in bot.tree.get_commands(guild=GUILD_OBJ)])
-
 
 async def main():
     await bot.start(os.getenv("TOKEN"))
