@@ -174,6 +174,7 @@ def remove_pending_invite(team_role_id: int, user_id: int) -> None:
 # ---------------- BOT SETUP ----------------
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True  # <--- ALLOW reading normal messages
 
 GUILD_OBJ = discord.Object(id=GUILD_ID)
 
