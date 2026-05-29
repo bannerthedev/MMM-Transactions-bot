@@ -6,6 +6,7 @@ import json
 import logging
 import random
 from pathlib import Path
+import shlex  # <--- ADD THIS
 import dotenv
 from dotenv import load_dotenv
 import os
